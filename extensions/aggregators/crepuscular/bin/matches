@@ -1,0 +1,7 @@
+#!/bin/sh
+# Sample of a shell matches script.
+if [ -e scripts/crep -a -e lib/crepuscular ]; then
+  exit 0
+else
+  exit 1
+fi

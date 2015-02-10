@@ -1,0 +1,7 @@
+#!/usr/bin/python
+
+print """You are in the crepuscular source directory!
+
+You probably want to run this command in the source directory of a project
+that you want to deploy.  :-)
+"""
