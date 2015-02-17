@@ -33,6 +33,17 @@ class Aggregator(object):
         """
         raise NotImplementedError()
 
+    def generate_image(self, core):
+        """Generate the crepuscular image files for the source directory.
+
+        Args:
+            core: (.core.Core)
+
+        Returns:
+            Python representation of the JSON image file.
+        """
+        raise NotImplementedError()
+
 
 class AggregatorExtension(object):
     """Aggregator implementation consisting of hook programs."""
@@ -45,8 +56,9 @@ class AggregatorExtension(object):
                                           core.get_source_directory())
 
     def dump(self, core):
-        core.get_utils().call_hook(self.root, 'dump',
-                                   core.get_source_directory())
+        output = core.get_utils().get_hook_output(self.root, 'dump',
+                                                  core.get_source_directory())
+        core.get_output().write_data(output)
 
     def get_info(self, core):
         info_file = os.path.join(self.root, 'data', 'info.json')
@@ -54,3 +66,12 @@ class AggregatorExtension(object):
             return json.load(open(info_file))
         else:
             return {'name': os.path.basename(self.root)}
+
+    def generate_image(self, core):
+        output = core.get_utils().get_hook_output(self.root, 'genimage',
+                                                  core.get_source_directory())
+        if output is None:
+            raise Exception('Unable to create image.')
+        f = open(os.path.join(core.get_source_directory(), '.crepuscular'), 'w')
+        json.dump(output, f)
+        return output

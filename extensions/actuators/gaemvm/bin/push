@@ -1,0 +1,93 @@
+#!/usr/bin/python
+
+import getopt
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+import readline
+import code
+
+image = json.load(sys.stdin)
+source_dir = sys.argv[1]
+opts, args = getopt.getopt(sys.argv[2:], 's:n', ['staging=', 'nodeploy'])
+staging_dir = None
+deploy = True
+for opt, val in opts:
+    if opt in ('-s', '--staging'):
+        staging_dir = val
+    elif opt in ('-n', '--nodeploy'):
+        deploy = False
+    else:
+        json.dump({'error': 'Unknown option {} (value is {})'.format(opt,
+                                                                     val)},
+                  sys.stderr)
+        sys.exit(1)
+
+# TODO: maybe manage the staging dir externally, this is likely to be fairly
+# common.
+if not staging_dir:
+    staging_dir = tempfile.mkdtemp()
+    delete_staging_dir = True
+else:
+    # Staging dir was provided by the user, they can manage it.
+    delete_staging_dir = False
+
+copied = []
+result = {'staging_dir': staging_dir, 'deps': image['deps'], 'copied': copied}
+try:
+    for file in image['files']:
+        full_name = os.path.join(staging_dir, 'app', file)
+        copied.append(full_name)
+
+        # Create the directory if it doesn't exist.
+        my_dir = os.path.dirname(full_name)
+        if not os.path.exists(my_dir):
+            os.makedirs(my_dir)
+
+        # copy the file, resolving any symlinks.
+        source_path = os.path.realpath(os.path.join(source_dir, file))
+        if os.path.isfile(source_path):
+            shutil.copyfile(source_path, full_name)
+
+    # begin writing a dockerfile
+    with open(os.path.join(staging_dir, 'Dockerfile'), 'w') as df:
+
+        df.write("""FROM ubuntu
+COPY app /app
+RUN apt-get -y update && apt-get -y upgrade
+""")
+
+        # TODO: This needs to be abstracted out, we also need to deal with versions.
+        for dep in image['deps']:
+            if dep['name'] == 'node.js':
+                df.write('RUN apt-get install -y nodejs\n')
+        df.write('CMD {}'.format(image['run']))
+
+    # Write an app.yaml
+    with open(os.path.join(staging_dir, 'app.yaml'), 'w') as ay:
+        ay.write("""runtime: custom
+version: 1
+vm: true
+api_version: 1
+threadsafe: yes
+handlers:
+- url: .*
+  script: dynamic
+""")
+
+    sys.stderr.write('DOCKER_HOST={}\n'.format(os.environ['DOCKER_HOST']))
+    if deploy:
+        gcproc = subprocess.Popen(['gcloud', 'preview', 'app', 'deploy',
+                                   staging_dir],
+                                  stdout=subprocess.PIPE)
+        stdout, _ = gcproc.communicate()
+        result['gcloud_out'] = stdout.split('\n')
+    json.dump(result, sys.stdout)
+
+finally:
+    if delete_staging_dir:
+        shutil.rmtree(staging_dir)

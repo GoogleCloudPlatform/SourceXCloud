@@ -1,11 +1,14 @@
 """Crepuscular core context.
 """
 
+import json
 import os
 import subprocess
 import sys
+import yaml
 
 from crepuscular import aggregator as agg
+from crepuscular import actuator as acc
 
 class Output(object):
     """Encapsulates all output to the user.
@@ -32,6 +35,10 @@ class Output(object):
 
     def write_row(self, *columns):
         """Write a row of tabular data."""
+        raise NotImplementedError()
+
+    def write_data(self, object):
+        """Write a raw data object in pretty-printed yaml-like format."""
         raise NotImplementedError()
 
 
@@ -68,6 +75,14 @@ class Core(object):
         """Returns the list of available aggregators."""
         raise NotImplementedError()
 
+    def get_actuators(self):
+        """Returns the list of available actuators."""
+        raise NotImplementedError()
+
+    def get_actuator(self, name):
+        """Returns the actuator specified by 'name', None if none exists."""
+        raise NotImplementedError()
+
     def get_ordered_aggregators(self):
         """Returns the list of aggregators in the order preferred by the user."""
         raise NotImplementedError()
@@ -80,6 +95,28 @@ class Core(object):
         """Returns the path to the user's source directory."""
         raise NotImplementedError()
 
+def _write_dict(object, indent):
+    sys.stdout.write('\n')
+    for key, val in object.iteritems():
+        sys.stdout.write('  ' * indent)
+        sys.stdout.write('\033[36;40m{}: '.format(key))
+        _write_object(val, indent + 1)
+
+def _write_list(object, indent):
+    sys.stdout.write('\n')
+    for item in object:
+        sys.stdout.write('  ' * indent)
+        sys.stdout.write('\033[33;40m- ')
+        _write_object(item, indent + 1)
+
+def _write_object(object, indent):
+    if isinstance(object, dict):
+        _write_dict(object, indent)
+    elif isinstance(object, list):
+        _write_list(object, indent)
+    else:
+        sys.stdout.write('\033[37;40m{}\n'.format(object))
+
 
 class StandardOutput(Output):
     """Standard implementation of Output.
@@ -88,7 +125,7 @@ class StandardOutput(Output):
     """
 
     def error(self, fmt, *args, **kwargs):
-        assert not (args and fmt), (
+        assert not (args and kwargs), (
             "error() method can accept either args or kwargs, but not both.")
         content = fmt.format(*args) if args else fmt.format(**kwargs)
         sys.stderr.write('\033[31;40m{}\033[m'.format(content))
@@ -101,14 +138,56 @@ class StandardOutput(Output):
     def write_row(self, *columns):
         sys.stdout.write('\033[37;40m{}\n'.format(' '.join(columns)))
 
+    def write_data(self, object):
+        _write_object(object, 0)
+
 
 class StandardUtils(Utils):
     """Standard implementation of Utils."""
+
+    def __init__(self, out):
+        """
+        Args:
+            out: (Output)
+        """
+        self.out = out
 
     def call_hook(self, prefix, hook_name, *args):
         full_hook_name = os.path.join(prefix, 'bin', hook_name)
         return (os.path.exists(full_hook_name) and
                 not subprocess.call([full_hook_name,] + list(args)))
+
+    def get_hook_output(self, prefix, hook_name, *args, **kwargs):
+        """Returns an object representing the output of a hook.
+
+        The hook should produce a JSON document on standard output.
+
+        Args:
+            prefix: (str) the path to the aggregator or actuator directory
+                corresponding to the current activity.
+            hook_name: (str) simple hook name.
+            *args: Hook arguments.
+            **kwargs: keyword arguments:
+                input: (str) If provided, this is the input to pass to the
+                    hook.
+
+        Returns:
+            The python representation of the JSON document output by the hook
+            or None if the hook doesn't exist.
+        """
+
+        full_hook_name = os.path.join(prefix, 'bin', hook_name)
+        if not os.path.exists(full_hook_name):
+            return None
+
+        proc = subprocess.Popen([full_hook_name] + list(args),
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                stdin=subprocess.PIPE)
+        output, err = proc.communicate(kwargs.get('input'))
+        if err:
+            self.out.error('Error output from {}:\n'.format(full_hook_name))
+            self.out.error('  {}', '  \n'.join(err.split('\n')))
+        return json.loads(output)
 
 
 class StandardCore(Core):
@@ -123,21 +202,39 @@ class StandardCore(Core):
         self.root = crepuscular_root
         self.__output = StandardOutput()
         self.__aggregators = None
-        self.__utils = StandardUtils()
+        self.__actuators = None
+        self.__utils = StandardUtils(self.__output)
         self.__source_dir = os.getcwd()
 
     def get_output(self):
         return self.__output
 
+    def __build_plugin_list(self, plugin_type, plugin_factory):
+        plugins = []
+        type_dir = os.path.join(self.root, plugin_type)
+        for dir in os.listdir(type_dir):
+            full_name = os.path.join(type_dir, dir)
+            plugins.append(plugin_factory(full_name))
+        return plugins
+
     def get_aggregators(self):
         if self.__aggregators is None:
-            self.__aggregators = []
-            agg_dir = os.path.join(self.root, 'aggregators')
-            for dir in os.listdir(agg_dir):
-                full_name = os.path.join(agg_dir, dir)
-                self.__aggregators.append(
-                    agg.AggregatorExtension(full_name))
+            self.__aggregators = self.__build_plugin_list(
+                'aggregators', agg.AggregatorExtension)
         return self.__aggregators
+
+    def get_actuators(self):
+        if self.__actuators is None:
+            self.__actuators = self.__build_plugin_list(
+                'actuators', acc.ActuatorExtension)
+        return self.__actuators
+
+    def get_actuator(self, name):
+        all = self.get_actuators()
+        for actuator in all:
+            if actuator.name == name:
+                return actuator
+        return None
 
     def get_ordered_aggregators(self):
         # Not really ordered at this time.

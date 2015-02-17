@@ -36,9 +36,37 @@ def list_aggregators(core, args):
         out.write_row(agg_info.get('name', ''), agg_info.get('desc', ''))
 
 
+def genimage(core, args):
+    """Generate the manifest for the source directory."""
+    for aggregator in core.get_ordered_aggregators():
+        if aggregator.matches(core):
+            image = aggregator.generate_image(core)
+            return image
+    else:
+        core.get_output().error('Unknown directory type')
+
+
+def push(core, args):
+    """<directory> <endpoint> [endpoint-args]
+    Push the project in the source directory to the specified endpoint.
+    """
+    out = core.get_output()
+    if len(args) < 2:
+        out.write_markdown('push ' + push.__doc__)
+        return
+    image = genimage(core, args[0])
+    actuator = core.get_actuator(args[1])
+    if actuator is None:
+        out.error('No actuator named {}'.format(args[1]))
+        return
+
+    # Invoke the actuator with the specified arguments.
+    out.write_data(actuator.push(core, image, args[2:]))
+
+
 # Build the set of commands from the command functions.
 _commands = {}
-for cmd in [help, inspect, list_aggregators]:
+for cmd in [help, inspect, list_aggregators, genimage, push]:
     _commands[cmd.__name__] = cmd
 
 
@@ -56,9 +84,10 @@ def main(argv):
     try:
         command = _commands[argv[1]]
     except KeyError as ex:
-        core.get_logger().error('Unknown command: {}', argv[1])
+        core.get_output().error('Unknown command: {}', argv[1])
         help(core)
         return 1
 
-    command(core, argv[1:])
+    # Call the command with the remaining user-provided arguments.
+    command(core, argv[2:])
 

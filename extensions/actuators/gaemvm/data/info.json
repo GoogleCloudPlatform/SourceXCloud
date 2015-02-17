@@ -1,0 +1,4 @@
+{
+  name: "gaemvm",
+  desc: "Google App Engine Managed VM",
+}

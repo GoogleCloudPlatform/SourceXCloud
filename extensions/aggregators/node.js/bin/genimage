@@ -1,0 +1,27 @@
+#!/usr/bin/python
+
+import json
+import os
+import sys
+
+def get_all_files(source_dir, cur_prefix):
+  for file in os.listdir(source_dir):
+    rel_path = os.path.join(cur_prefix, file)
+    files.append(rel_path)
+    real_file = os.path.join(source_dir, file)
+    if os.path.isdir(real_file):
+      get_all_files(real_file, rel_path)
+
+_, source_dir = sys.argv
+
+package_json = json.load(open('package.json'))
+
+manifest = {}
+manifest['files'] = files = []
+manifest['deps'] = [{'name': 'node.js', 'version': 'v0.12.0'}]
+# TODO: The path to the nodejs binary needs to be abstracted out.
+manifest['run'] = '/usr/bin/nodejs /app/{}'.format(package_json['main'])
+
+get_all_files(source_dir, '')
+
+json.dump(manifest, sys.stdout)
