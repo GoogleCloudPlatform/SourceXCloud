@@ -1,0 +1,160 @@
+#!/usr/bin/python
+
+# Notes: The SSH key id in this api is the fingerprint, e.g. the colon
+# separated string of hex byte values on the front page.  The public key comes
+# back in the single line format that it would be present in the authorized_keys
+# file as.
+
+import getopt
+import json
+import os
+import shutil
+import socket
+import sys
+import tarfile
+import time
+
+from crepuscular import extlib
+from crepuscular import proclib
+from digitalocean import Droplet, Manager, SSHKey
+
+token = '1991af9baaa409864ccdf8b3d55521ee4b2930e9e933da70f87685324404d369'
+
+def wait_for_completed(droplet):
+    while True:
+        actions = droplet.get_actions()
+        for action in actions:
+            action.load()
+            if action.status == 'completed':
+                return
+        time.sleep(1)
+
+def test_connection(ip_addr, port):
+    while True:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0)
+        try:
+            s.connect((ip_addr, port))
+            s.close()
+            return
+        except socket.error:
+            pass
+        time.sleep(1)
+
+# Load the IR.
+image = json.load(sys.stdin)
+
+source_dir = sys.argv[1]
+opts, args = getopt.getopt(sys.argv[2:], 's:n', ['staging=', 'nodeploy'])
+staging_dir = None
+deploy = True
+for opt, val in opts:
+    if opt in ('-s', '--staging'):
+        staging_dir = val
+    elif opt in ('-n', '--nodeploy'):
+        deploy = False
+    else:
+        extlib.error('Unknown option {} (value is {})'.format(opt, val))
+        sys.exit(1)
+
+# TODO: core should manage a temporary directory for extensions to put stuff
+# like this key into.
+keyname = 'digitalocean_key'
+if not os.path.exists(keyname):
+    relay = extlib.OutputRelay('ssh-keygen')
+    proclib.run('ssh-keygen', '-f', keyname, '-N', '',
+                stdout_callback=relay.stdout_callback,
+                stderr_callback=relay.stderr_callback)
+
+# Install the key on digital ocean. (XXX not sure we need to do this)
+my_key = open(keyname + '.pub').read()
+#extlib.info('uploading ssh key')
+#key = SSHKey(token=token)
+#key.name = 'google-test-key-1'
+#key.public_key = my_key
+#key.create()
+
+# Find your droplet
+# Password for machine created Thu, 19 Feb 2015 14:18:54 +0000 is lost.
+manager = Manager(token=token)
+for droplet in manager.get_all_droplets():
+    if droplet.name == 'google-test-1':
+        extlib.info('Found droplet {} with id {}'.format(droplet.name,
+                                                         repr(droplet.id)))
+        break
+else:
+    # Not found.  Create a new droplet.
+    extlib.info('Creating droplet...')
+    droplet = Droplet(token=token,
+                      name='google-test-1',
+                      region='nyc2',
+                      image='Ubuntu-14-04-x64',
+                      size_slug='512mb',
+                      backups=True,
+                      ssh_keys=[my_key])
+    droplet.create()
+
+# Wait for setup of the droplet to complete.
+extlib.info('Waiting for droplet to come online...')
+wait_for_completed(droplet)
+
+# Get the droplet again to refresh its info.
+if droplet.ip_address is None:
+    droplet = Droplet.get_object(token, droplet.id)
+
+extlib.info('Waiting for ssh to become available...')
+test_connection(droplet.ip_address, 22)
+
+staging_dir = extlib.stage_files(source_dir, image, staging_dir=staging_dir)
+try:
+    extlib.info('emitting installation script')
+    adm_dir = os.path.join(staging_dir, 'adm')
+    os.mkdir(adm_dir)
+    install_script_name = os.path.join(adm_dir, 'install')
+    with open(install_script_name, 'w') as install_script:
+        install_script.write("#!/bin/sh\n")
+
+        # Emit dependency installation.
+        for dep in image['deps']:
+            # TODO: refactor out dependency analysis
+            if dep['name'] == 'node.js':
+                install_script.write('apt-get install -y nodejs\n')
+
+        # clean up after ourselves.
+        install_script.write('rm -r adm\n')
+
+        # reboot.
+        install_script.write('shutdown -r now\n')
+    os.chmod(install_script_name, 0755)
+
+    extlib.info('emitting /etc/rc.local script')
+    etc_dir = os.path.join(staging_dir, 'etc')
+    os.mkdir(etc_dir)
+    startup_script_name = os.path.join(etc_dir, 'rc.local')
+    with open(startup_script_name, 'w') as startup_script:
+        startup_script.write('#!/bin/sh\n/usr/bin/nodejs /app/example.js\n')
+    os.chmod(startup_script_name, 0755)
+
+    # Tar up the entire staging directory.
+    extlib.info('creating source tarball')
+    tar_name = os.path.join(staging_dir, 'staging.tar.gz')
+    tar_fp = tarfile.open(tar_name, 'w:gz')
+    tar_fp.add(staging_dir, '/')
+    tar_fp.close()
+
+    extlib.info('copying archive to droplet')
+    relay = extlib.OutputRelay('scp')
+    proclib.run('scp', '-i', keyname, '-o', 'StrictHostKeyChecking no',
+                tar_name, 'root@%s:/staging.tar.gz' % droplet.ip_address,
+                stdout_callback=relay.stdout_callback,
+                stderr_callback=relay.stderr_callback)
+finally:
+    shutil.rmtree(staging_dir)
+
+extlib.info('sshing to droplet')
+relay = extlib.OutputRelay('ssh')
+proclib.run('ssh', '-i', keyname, '-o', 'StrictHostKeyChecking no',
+            'root@%s' % droplet.ip_address, 'bash',
+            stdout_callback=relay.stdout_callback,
+            stderr_callback=relay.stderr_callback,
+            stdin='cd /; tar -xvzf staging.tar.gz; /adm/install')
+
