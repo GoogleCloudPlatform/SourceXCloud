@@ -11,6 +11,9 @@ import tempfile
 import readline
 import code
 
+from crepuscular import proclib
+from crepuscular import extlib
+
 image = json.load(sys.stdin)
 source_dir = sys.argv[1]
 opts, args = getopt.getopt(sys.argv[2:], 's:n', ['staging=', 'nodeploy'])
@@ -22,9 +25,7 @@ for opt, val in opts:
     elif opt in ('-n', '--nodeploy'):
         deploy = False
     else:
-        json.dump({'error': 'Unknown option {} (value is {})'.format(opt,
-                                                                     val)},
-                  sys.stderr)
+        extlib.error('Unknown option {} (value is {})'.format(opt, val))
         sys.exit(1)
 
 # TODO: maybe manage the staging dir externally, this is likely to be fairly
@@ -37,8 +38,11 @@ else:
     delete_staging_dir = False
 
 copied = []
-result = {'staging_dir': staging_dir, 'deps': image['deps'], 'copied': copied}
+result = {'type': 'result', 'staging_dir': staging_dir, 'deps': image['deps'],
+          'copied': copied}
 try:
+    extlib.info('copying files')
+
     for file in image['files']:
         full_name = os.path.join(staging_dir, 'app', file)
         copied.append(full_name)
@@ -54,6 +58,7 @@ try:
             shutil.copyfile(source_path, full_name)
 
     # begin writing a dockerfile
+    extlib.info('generating dockerfile')
     with open(os.path.join(staging_dir, 'Dockerfile'), 'w') as df:
 
         df.write("""FROM ubuntu
@@ -68,6 +73,7 @@ RUN apt-get -y update && apt-get -y upgrade
         df.write('CMD {}'.format(image['run']))
 
     # Write an app.yaml
+    extlib.info('generating app.yaml')
     with open(os.path.join(staging_dir, 'app.yaml'), 'w') as ay:
         ay.write("""runtime: custom
 version: 1
@@ -79,14 +85,20 @@ handlers:
   script: dynamic
 """)
 
-    sys.stderr.write('DOCKER_HOST={}\n'.format(os.environ['DOCKER_HOST']))
     if deploy:
-        gcproc = subprocess.Popen(['gcloud', 'preview', 'app', 'deploy',
-                                   staging_dir],
-                                  stdout=subprocess.PIPE)
-        stdout, _ = gcproc.communicate()
-        result['gcloud_out'] = stdout.split('\n')
-    json.dump(result, sys.stdout)
+
+        def on_stdout(line):
+            extlib.send_object({'type': 'info',
+                                'message': 'gcloud: {}'.format(line)})
+
+        def on_stderr(line):
+            extlib.error('gcloud: {}'.format(line))
+
+        proclib.run('gcloud', 'preview', 'app', 'deploy', staging_dir,
+                    stdout_callback=on_stdout,
+                    stderr_callback=on_stderr)
+
+    extlib.send_object(result)
 
 finally:
     if delete_staging_dir:
