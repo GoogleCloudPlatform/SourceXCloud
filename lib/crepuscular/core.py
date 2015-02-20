@@ -9,6 +9,7 @@ import yaml
 
 from crepuscular import aggregator as agg
 from crepuscular import actuator as acc
+from crepuscular import proclib
 
 class Output(object):
     """Encapsulates all output to the user.
@@ -19,6 +20,30 @@ class Output(object):
 
     def error(self, fmt, *args, **kwargs):
         """Writes an error to the user.
+
+        Args:
+            fmt: (basestring) A format string.  This will be called with the
+                format method and the arguments passed in through 'args' or
+                'kwargs'.
+            args: List of arguments for format.
+            kwargs: keyword arguments for format.
+        """
+        raise NotImplementedError()
+
+    def info(self, fmt, *args, **kwargs):
+        """Writes an info message to the user.
+
+        Args:
+            fmt: (basestring) A format string.  This will be called with the
+                format method and the arguments passed in through 'args' or
+                'kwargs'.
+            args: List of arguments for format.
+            kwargs: keyword arguments for format.
+        """
+        raise NotImplementedError()
+
+    def warn(self, fmt, *args, **kwargs):
+        """Writes a warning message to the user.
 
         Args:
             fmt: (basestring) A format string.  This will be called with the
@@ -95,27 +120,57 @@ class Core(object):
         """Returns the path to the user's source directory."""
         raise NotImplementedError()
 
-def _write_dict(object, indent):
+
+def _write_dict(object, indent, written):
     sys.stdout.write('\n')
     for key, val in object.iteritems():
         sys.stdout.write('  ' * indent)
         sys.stdout.write('\033[36;40m{}: '.format(key))
-        _write_object(val, indent + 1)
+        _write_object(val, indent + 1, written)
 
-def _write_list(object, indent):
+
+def _write_list(object, indent, written):
     sys.stdout.write('\n')
     for item in object:
         sys.stdout.write('  ' * indent)
         sys.stdout.write('\033[33;40m- ')
-        _write_object(item, indent + 1)
+        _write_object(item, indent + 1, written)
 
-def _write_object(object, indent):
+
+def _write_object(object, indent, written):
+
+    # Check for a cycle.
+    obj_id = id(object)
+    if obj_id in written:
+        sys.stdout.write('\033[31;40mCYCLE!')
+        return
+    written.add(obj_id)
+
+    # Write based on the specific object type.
     if isinstance(object, dict):
-        _write_dict(object, indent)
+        _write_dict(object, indent, written)
     elif isinstance(object, list):
-        _write_list(object, indent)
+        _write_list(object, indent, written)
     else:
         sys.stdout.write('\033[37;40m{}\n'.format(object))
+
+    written.remove(obj_id)
+
+
+def _nl_terminate(line):
+    """Make sure the line is newline terminate.
+
+    Returns line, adding a newline to it if there isn't already one.
+
+    Args:
+        line: (str)
+
+    Returns:
+        (str)
+    """
+    if not line or line[-1] != '\n':
+        line += '\n'
+    return line
 
 
 class StandardOutput(Output):
@@ -128,7 +183,19 @@ class StandardOutput(Output):
         assert not (args and kwargs), (
             "error() method can accept either args or kwargs, but not both.")
         content = fmt.format(*args) if args else fmt.format(**kwargs)
-        sys.stderr.write('\033[31;40m{}\033[m'.format(content))
+        sys.stderr.write('\033[31;40m{}\033[m'.format(_nl_terminate(content)))
+
+    def info(self, fmt, *args, **kwargs):
+        assert not (args and kwargs), (
+            "info() method can accept either args or kwargs, but not both.")
+        content = fmt.format(*args) if args else fmt.format(**kwargs)
+        sys.stderr.write('\033[32;40m{}\033[m'.format(_nl_terminate(content)))
+
+    def warn(self, fmt, *args, **kwargs):
+        assert not (args and kwargs), (
+            "warn() method can accept either args or kwargs, but not both.")
+        content = fmt.format(*args) if args else fmt.format(**kwargs)
+        sys.stderr.write('\033[33;40m{}\033[m'.format(_nl_terminate(content)))
 
     def write_markdown(self, document):
         sys.stdout.write('\033[36;40m')
@@ -139,7 +206,7 @@ class StandardOutput(Output):
         sys.stdout.write('\033[37;40m{}\n'.format(' '.join(columns)))
 
     def write_data(self, object):
-        _write_object(object, 0)
+        _write_object(object, 0, set())
 
 
 class StandardUtils(Utils):
@@ -185,9 +252,66 @@ class StandardUtils(Utils):
                                 stdin=subprocess.PIPE)
         output, err = proc.communicate(kwargs.get('input'))
         if err:
-            self.out.error('Error output from {}:\n'.format(full_hook_name))
+            self.out.error('Error output from {}:\n', full_hook_name)
             self.out.error('  {}', '  \n'.join(err.split('\n')))
         return json.loads(output)
+
+    def run_hook(self, prefix, hook_name, *args, **kwargs):
+        """Returns an object representing the final result of a hook.
+
+        The hook should produce a JSON document on standard output.
+
+        Args:
+            prefix: (str) the path to the aggregator or actuator directory
+                corresponding to the current activity.
+            hook_name: (str) simple hook name.
+            *args: Hook arguments.
+            **kwargs: keyword arguments:
+                input: (str) If provided, this is the input to pass to the
+                    hook.
+
+        Returns:
+            The python representation of the JSON document output by the hook
+            or None if the hook doesn't exist.
+        """
+
+        result = []
+        def on_error(line):
+            self.out.error('{}:{} {}', prefix, hook_name, line)
+
+        def on_stdout_line(line):
+            try:
+                obj = json.loads(line)
+                type = obj.get('type')
+                if type == 'result':
+                    result.append(obj)
+                elif type == 'error':
+                    self.out.error('{}', obj.get('error'))
+                elif type == 'info':
+                    self.out.info('{}', obj.get('message'))
+                elif type == 'warn':
+                    self.out.warn('{}', obj.get('message'))
+                else:
+                    self.out.error('Unrecognized object:\n')
+                    self.out.write_data(obj)
+            except ValueError:
+                on_error(line)
+
+        def on_pipe_error(pipe_name):
+            self.out.error('Error reading from {} of hook {}:{}',
+                           pipe_name, prefix, hook_name)
+
+        full_hook_name = os.path.join(prefix, 'bin', hook_name)
+        if not os.path.exists(full_hook_name):
+            return None
+
+        proclib.run(*[full_hook_name] + list(args),
+                    stdin=kwargs.get('input'),
+                    stdout_callback=on_stdout_line,
+                    stderr_callback=on_error,
+                    pipe_error_callback=on_pipe_error)
+
+        return result[0] if result else None
 
 
 class StandardCore(Core):
