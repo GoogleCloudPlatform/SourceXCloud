@@ -57,7 +57,10 @@ def run(*args, **kwargs):
     outputs = [proc.stdin] if stdin else []
 
     # Make the inputs non-blocking
-    _set_nonblocking(proc.stdout)
+    if stdout_callback:
+        _set_nonblocking(proc.stdout)
+    if stderr_callback:
+        _set_nonblocking(proc.stderr)
 
     while inputs or outputs:
         rdx, wrx, erx = select.select(inputs, outputs, inputs + outputs)
