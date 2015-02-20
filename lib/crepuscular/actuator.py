@@ -19,7 +19,7 @@ class ActuatorExtension(Actuator):
         self.name = os.path.basename(actuator_root_dir)
 
     def push(self, core, image, args):
-        result = core.get_utils().get_hook_output(
+        result = core.get_utils().run_hook(
             self.root, 'push', core.get_source_directory(), *args,
             input=json.dumps(image))
         return result
