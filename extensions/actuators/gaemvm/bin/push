@@ -66,11 +66,21 @@ COPY app /app
 RUN apt-get -y update && apt-get -y upgrade
 """)
 
-        # TODO: This needs to be abstracted out, we also need to deal with versions.
+        # TODO: This needs to be abstracted out, we also need to deal with
+        # versions.
         for dep in image['deps']:
             if dep['name'] == 'node.js':
                 df.write('RUN apt-get install -y nodejs\n')
-        df.write('CMD {}'.format(image['run']))
+            elif dep['name'] == 'django':
+                df.write('RUN apt-get install -y python-django\n')
+            else:
+                extlib.error('Unknown dependency {}'.format(dep['name']))
+
+        for install_hook in image.get('on_install'):
+            extlib.info('adding install hook: {}'.format(repr(install_hook)))
+            df.write('RUN {}\n'.format(install_hook))
+
+        df.write('CMD {}\n'.format(image['run']))
 
     # Write an app.yaml
     extlib.info('generating app.yaml')

@@ -18,7 +18,12 @@ from crepuscular import extlib
 from crepuscular import proclib
 from digitalocean import Droplet, Manager, SSHKey
 
-token = '1991af9baaa409864ccdf8b3d55521ee4b2930e9e933da70f87685324404d369'
+if not os.path.exists('digitalocean.token'):
+    extlib.error('You must create the file "digitalocean.token" containing '
+                 'a DO application token.')
+    sys.exit(1)
+
+token = open('digitalocean.token').read().strip()
 
 def wait_for_completed(droplet):
     while True:
@@ -112,12 +117,23 @@ try:
     install_script_name = os.path.join(adm_dir, 'install')
     with open(install_script_name, 'w') as install_script:
         install_script.write("#!/bin/sh\n")
+        install_script.write('apt-get update -y\n')
+        install_script.write('apt-get dist-upgrade -y\n')
 
         # Emit dependency installation.
         for dep in image['deps']:
             # TODO: refactor out dependency analysis
             if dep['name'] == 'node.js':
                 install_script.write('apt-get install -y nodejs\n')
+            elif dep['name'] == 'django':
+                install_script.write('apt-get install -y python-django\n')
+            else:
+                extlib.error('Unknown dependency {}'.format(dep['name']))
+
+        # Run the install hooks.
+        for install_hook in image.get('on_install'):
+            extlib.info('adding install hook: {}'.format(repr(install_hook)))
+            install_script.write(install_hook + '\n')
 
         # clean up after ourselves.
         install_script.write('rm -r adm\n')
@@ -131,7 +147,7 @@ try:
     os.mkdir(etc_dir)
     startup_script_name = os.path.join(etc_dir, 'rc.local')
     with open(startup_script_name, 'w') as startup_script:
-        startup_script.write('#!/bin/sh\n/usr/bin/nodejs /app/example.js\n')
+        startup_script.write('#!/bin/sh\n{}\n'.format(image['run']))
     os.chmod(startup_script_name, 0755)
 
     # Tar up the entire staging directory.
