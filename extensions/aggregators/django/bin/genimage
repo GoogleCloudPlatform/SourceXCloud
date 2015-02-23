@@ -1,0 +1,26 @@
+#!/usr/bin/python
+
+import json
+import os
+import sys
+
+def get_all_files(source_dir, cur_prefix):
+  for file in os.listdir(source_dir):
+    rel_path = os.path.join(cur_prefix, file)
+    files.append(rel_path)
+    real_file = os.path.join(source_dir, file)
+    if os.path.isdir(real_file):
+      get_all_files(real_file, rel_path)
+
+_, source_dir = sys.argv
+
+manifest = {}
+manifest['files'] = files = []
+manifest['deps'] = [{'name': 'django', 'version': '1.6.1'}]
+# TODO: The path to the nodejs binary needs to be abstracted out.
+manifest['run'] = '/usr/bin/python /app/manage.py runserver 0.0.0.0:8080'
+manifest['on_install'] = ['/usr/bin/python /app/manage.py syncdb']
+
+get_all_files(source_dir, '')
+
+json.dump(manifest, sys.stdout)
