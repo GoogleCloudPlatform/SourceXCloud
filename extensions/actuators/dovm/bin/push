@@ -131,7 +131,7 @@ try:
                 extlib.error('Unknown dependency {}'.format(dep['name']))
 
         # Run the install hooks.
-        for install_hook in image.get('on_install'):
+        for install_hook in image.get('on_install', []):
             extlib.info('adding install hook: {}'.format(repr(install_hook)))
             install_script.write(install_hook + '\n')
 
@@ -173,4 +173,4 @@ proclib.run('ssh', '-i', keyname, '-o', 'StrictHostKeyChecking no',
             stdout_callback=relay.stdout_callback,
             stderr_callback=relay.stderr_callback,
             stdin='cd /; tar -xvzf staging.tar.gz; /adm/install')
-
+extlib.info('deployed to host {}'.format(droplet.ip_address))
