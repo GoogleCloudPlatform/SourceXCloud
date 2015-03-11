@@ -1,6 +1,6 @@
 #!/bin/sh
 # Sample of a shell matches script.
-if [ -e scripts/crep -a -e lib/crepuscular ]; then
+if [ -e scripts/sxc -a -e lib/sxc ]; then
   exit 0
 else
   exit 1

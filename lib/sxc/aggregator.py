@@ -34,7 +34,7 @@ class Aggregator(object):
         raise NotImplementedError()
 
     def generate_image(self, core):
-        """Generate the crepuscular image files for the source directory.
+        """Generate the SourceXCloud image files for the source directory.
 
         Args:
             core: (.core.Core)
@@ -72,6 +72,6 @@ class AggregatorExtension(object):
                                                   core.get_source_directory())
         if output is None:
             raise Exception('Unable to create image.')
-        f = open(os.path.join(core.get_source_directory(), '.crepuscular'), 'w')
+        f = open(os.path.join(core.get_source_directory(), '.sxc'), 'w')
         json.dump(output, f)
         return output

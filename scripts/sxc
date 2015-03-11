@@ -1,6 +1,6 @@
 #!/usr/bin/python
 
 import sys
-from crepuscular.command import main
+from sxc.command import main
 
 sys.exit(main(sys.argv))

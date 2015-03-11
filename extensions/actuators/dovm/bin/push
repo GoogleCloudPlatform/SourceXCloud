@@ -14,8 +14,8 @@ import sys
 import tarfile
 import time
 
-from crepuscular import extlib
-from crepuscular import proclib
+from sxc import extlib
+from sxc import proclib
 from digitalocean import Droplet, Manager, SSHKey
 
 if not os.path.exists('digitalocean.token'):

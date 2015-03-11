@@ -1,12 +1,12 @@
-"""The crepuscular main command.
+"""The SourceXCloud main command.
 """
 
 import os
 
-from crepuscular.core import StandardCore
+from sxc.core import StandardCore
 
 # Command functions.  Each of these must accept the following arguments:
-#   core: (crepuscular.core.Core)
+#   core: (sxc.core.Core)
 #   args: ([str, ...]) Command arguments (excluding the command and
 #       subcommand, so with "crep foo bar baz" args would be ['bar', 'baz']
 

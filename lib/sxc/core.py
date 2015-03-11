@@ -1,4 +1,4 @@
-"""Crepuscular core context.
+"""SourceXCloud core context.
 """
 
 import json
@@ -7,9 +7,9 @@ import subprocess
 import sys
 import yaml
 
-from crepuscular import aggregator as agg
-from crepuscular import actuator as acc
-from crepuscular import proclib
+from sxc import aggregator as agg
+from sxc import actuator as acc
+from sxc import proclib
 
 class Output(object):
     """Encapsulates all output to the user.
@@ -317,13 +317,13 @@ class StandardUtils(Utils):
 class StandardCore(Core):
     """Standard implementation of Core."""
 
-    def __init__(self, crepuscular_root):
+    def __init__(self, sxc_root):
         """Constructor.
 
         Args:
-            crepuscular_root: (basestring) Root of the crepuscular distribution.
+            sxc_root: (basestring) Root of the SourceXCloud distribution.
         """
-        self.root = crepuscular_root
+        self.root = sxc_root
         self.__output = StandardOutput()
         self.__aggregators = None
         self.__actuators = None
