@@ -3,7 +3,8 @@ SourceXCloud - a Framework for deploying from any Source to any Cloud Target
 ============================================================================
 
 SourceXCloud is an experimental pluggable framework for deploying directly
-from any source environment to any target cloud environment.
+from any source environment to any target cloud environment. This is
+alpha-quality code, expect difficulties.
 
 This code is provided as a demonstration of a concept, not as production-ready
 code.  We will accept patches, and it may receive development attention if
