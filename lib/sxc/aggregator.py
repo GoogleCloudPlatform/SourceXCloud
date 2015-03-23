@@ -1,3 +1,17 @@
+# Copyright 2015 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 """The aggregator interface.
 """
 
@@ -34,7 +48,7 @@ class Aggregator(object):
         raise NotImplementedError()
 
     def generate_image(self, core):
-        """Generate the crepuscular image files for the source directory.
+        """Generate the SourceXCloud image files for the source directory.
 
         Args:
             core: (.core.Core)
@@ -72,6 +86,6 @@ class AggregatorExtension(object):
                                                   core.get_source_directory())
         if output is None:
             raise Exception('Unable to create image.')
-        f = open(os.path.join(core.get_source_directory(), '.crepuscular'), 'w')
+        f = open(os.path.join(core.get_source_directory(), '.sxc'), 'w')
         json.dump(output, f)
         return output

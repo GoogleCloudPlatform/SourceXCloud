@@ -1,4 +1,18 @@
-"""Crepuscular core context.
+# Copyright 2015 Google Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""SourceXCloud core context.
 """
 
 import json
@@ -7,9 +21,9 @@ import subprocess
 import sys
 import yaml
 
-from crepuscular import aggregator as agg
-from crepuscular import actuator as acc
-from crepuscular import proclib
+from sxc import aggregator as agg
+from sxc import actuator as acc
+from sxc import proclib
 
 class Output(object):
     """Encapsulates all output to the user.
@@ -317,13 +331,13 @@ class StandardUtils(Utils):
 class StandardCore(Core):
     """Standard implementation of Core."""
 
-    def __init__(self, crepuscular_root):
+    def __init__(self, sxc_root):
         """Constructor.
 
         Args:
-            crepuscular_root: (basestring) Root of the crepuscular distribution.
+            sxc_root: (basestring) Root of the SourceXCloud distribution.
         """
-        self.root = crepuscular_root
+        self.root = sxc_root
         self.__output = StandardOutput()
         self.__aggregators = None
         self.__actuators = None

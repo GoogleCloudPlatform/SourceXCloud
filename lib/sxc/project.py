@@ -1,4 +1,3 @@
-#!/bin/sh
 # Copyright 2015 Google Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,8 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-if [ -e "$1/package.json" ]; then
-  exit 0
-else
-  exit 1
-fi
+"""Project intermediate infrastructure.
+"""
+
+class Project(object):
+
+  def __init__(self, staging_dir, dependencies=None, extensions=None):
+    self.staging_dir = staging_dir
+    self.dependencies = dependencies or []
+    self.extensions = extensions or {}
