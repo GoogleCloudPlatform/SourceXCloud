@@ -76,7 +76,7 @@ RUN apt-get -y update && apt-get -y upgrade
             else:
                 extlib.error('Unknown dependency {}'.format(dep['name']))
 
-        for install_hook in image.get('on_install'):
+        for install_hook in image.get('on_install', []):
             extlib.info('adding install hook: {}'.format(repr(install_hook)))
             df.write('RUN {}\n'.format(install_hook))
 
@@ -93,6 +93,8 @@ threadsafe: yes
 handlers:
 - url: .*
   script: dynamic
+manual_scaling:
+  instances: 1
 """)
 
     if deploy:
